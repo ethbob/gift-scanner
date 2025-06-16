@@ -1,19 +1,44 @@
 from telethon import TelegramClient, events
 import asyncio
+import re
 
 # --------- НАСТРОЙКИ ----------
-api_id = 15351605  # ← Замени на свой
-api_hash = 'REMOVED'  # ← Замени на свой
+api_id = 15351605
+api_hash = 'REMOVED'
 session_name = 'test_session'
 
-target_group = 'annahabell_chat'  # ← username чата
+target_group = 'testgiftscanner'
 price_bot = 'PriceNFTbot'
-delay = 4  # задержка между запросами
-timeout = 20  # максимум ожидания ответа
+delay = 4
+timeout = 20
 output_file = 'found_users.txt'
 # ------------------------------
 
 found_users = []
+
+import re
+
+def extract_info(text: str) -> str:
+    # Удалим все невидимые юникод-символы типа \u2066-\u2069, которые встречаются вокруг цифр
+    clean_text = re.sub(r'[\u2060-\u206F\u200B-\u200D]', '', text)
+
+    # Поиск количества NFT (рус и англ)
+    nft_match = re.search(
+        r"(?:has|имеет)\D*(\d+)\D*(?:visible NFTs|публичных NFT)",
+        clean_text,
+        re.IGNORECASE
+    )
+    nft_count = nft_match.group(1) if nft_match else "?"
+
+    # Поиск Floor price
+    floor_match = re.search(r"Floor price:\s*(.+)", clean_text, re.IGNORECASE)
+    floor = floor_match.group(1).strip() if floor_match else "нет данных"
+
+    # Поиск AVG price
+    avg_match = re.search(r"AVG price:\s*(.+)", clean_text, re.IGNORECASE)
+    avg = avg_match.group(1).strip() if avg_match else "нет данных"
+
+    return f"NFT: {nft_count} | Floor: {floor} | AVG: {avg}"
 
 async def check_user(client: TelegramClient, username: str):
     event = asyncio.Event()
@@ -22,8 +47,8 @@ async def check_user(client: TelegramClient, username: str):
     @client.on(events.NewMessage(from_users=price_bot))
     async def handler(event_message):
         nonlocal response_text
-        response_text = event_message.raw_text.lower()
-        event.set()  # сигнализируем, что ответ получен
+        response_text = event_message.raw_text
+        event.set()
 
     try:
         await client.send_message(price_bot, f"@{username}")
@@ -38,11 +63,16 @@ async def check_user(client: TelegramClient, username: str):
 
         client.remove_event_handler(handler)
 
-        if "юзернеймом" in response_text or "not found" in response_text:
+        lowered = response_text.lower()
+        if "юзернеймом" in lowered or "not found" in lowered:
             print(f"❌ @{username} — нет подарков")
             return False
-        elif "имеет" in response_text or 'has' in response_text:
-            print(f"✅ @{username} — есть подарки!")
+        elif "имеет" in lowered or "has" in lowered:
+            info = extract_info(response_text)
+            print(f"✅ @{username} — есть подарки! ({info})")
+            found_users.append(username)
+            with open(output_file, 'a', encoding='utf-8') as f:
+                f.write(f"@{username} — {info}\n")
             return True
         else:
             print(f"❔ @{username} — неизвестный ответ: {response_text[:60]}...")
@@ -78,12 +108,7 @@ async def main():
             print(f"⏩ @{username} уже проверен")
             continue
 
-        has_gift = await check_user(client, username)
-        if has_gift:
-            found_users.append(username)
-            with open(output_file, 'a', encoding='utf-8') as f:
-                f.write(f"{username}\n")
-
+        await check_user(client, username)
         await asyncio.sleep(delay)
 
     print("\n🎉 Готово!")
