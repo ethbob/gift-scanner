@@ -1,10 +1,11 @@
+import os
 from telethon import TelegramClient, events
 import asyncio
 import re
 
 # --------- НАСТРОЙКИ ----------
-api_id = 15351605
-api_hash = 'REMOVED'
+api_id = int(os.environ["TG_API_ID"])
+api_hash = os.environ["TG_API_HASH"]
 session_name = 'test_session'
 
 target_group = 'testgiftscanner'
